@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<android.support.constraint.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:context=".MainActivity">
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintRight_toRightOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        >
+        <TextView
+            android:id="@+id/tv_proximity"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="接近传感值："
+            android:textSize="25dp"
+            />
+        <TextView
+            android:id="@+id/tv_light"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="光线强度："
+            android:textSize="25dp"
+            />
+        <TextView
+            android:id="@+id/screen_brightness"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="当前屏幕亮度："
+            android:textSize="25dp"
+            />
+        <EditText
+            android:id="@+id/screen_edit"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:hint="0-255"
+            />
+        <Button
+            android:id="@+id/screen_button"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="设置屏幕亮度"
+            />
+        <SeekBar
+            android:id="@+id/sb"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            />
+
+    </LinearLayout>
+
+
+</android.support.constraint.ConstraintLayout>
