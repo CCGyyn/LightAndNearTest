@@ -40,6 +40,8 @@
             android:id="@+id/screen_edit"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:maxLength="3"
+            android:digits="1234567890"
             android:hint="0-255"
             />
         <Button
@@ -48,10 +50,52 @@
             android:layout_height="wrap_content"
             android:text="设置屏幕亮度"
             />
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            >
+            <android.support.constraint.ConstraintLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content">
+                <TextView
+                    android:id="@+id/screen_text"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="屏幕亮度调节方式 "
+                    android:textSize="25dp"
+                    app:layout_constraintBaseline_toBaselineOf="@+id/switch_brightness"
+                    />
+                <android.support.v7.widget.SwitchCompat
+                    android:id="@+id/switch_brightness"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textOff="手动"
+                    android:textOn="自动"
+                    style="@style/Base.TextAppearance.AppCompat.Widget.Switch"
+                    app:showText="true"
+                    android:layout_gravity="center"
+                    android:checked="true"
+                    app:layout_constraintLeft_toRightOf="@+id/screen_text"
+                    />
+            </android.support.constraint.ConstraintLayout>
+
+        </LinearLayout>
+
         <SeekBar
             android:id="@+id/sb"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:max="255"
+            android:min="0"
+            android:progress="255"
+            android:layout_weight="1"
+            />
+        <TextView
+            android:id="@+id/test"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="test"
             />
 
     </LinearLayout>
