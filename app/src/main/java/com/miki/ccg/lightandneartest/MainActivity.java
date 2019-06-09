@@ -20,6 +20,8 @@ import android.provider.Settings;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.support.v7.widget.SwitchCompat;
+import android.util.Log;
+import android.util.Spline;
 import android.view.Display;
 import android.view.View;
 import android.view.WindowManager;
@@ -29,6 +31,8 @@ import android.widget.EditText;
 import android.widget.SeekBar;
 import android.widget.Switch;
 import android.widget.TextView;
+
+import java.text.DecimalFormat;
 
 
 /**
@@ -51,6 +55,10 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     private int mMaximumBacklight;
     private ContentObserver mBrightnessObserver;
     Context mContext;
+    Spline.MonotoneCubicSpline mScreenAutoBrightnessSpline;
+    // 是否开启自动亮度调节
+    boolean isScreenAutoBrightness = true;
+    DecimalFormat decimalFormat=new DecimalFormat("0.0");
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -71,6 +79,45 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         mMinimumBacklight = pm.getMinimumScreenBrightnessForVrSetting();
         mMaximumBacklight = pm.getMaximumScreenBrightnessForVrSetting();
 
+        int[] luxInt = getResources().getIntArray(
+                com.android.internal.R.array.config_autoBrightnessLevels);
+        int[] screenBrightnessInt = getResources().getIntArray(
+                com.android.internal.R.array.config_autoBrightnessLcdBacklightValues);
+        float[] luxFloat = new float[9];
+        float[] screenBrightnessFloat = new float[9];
+        luxFloat[0] = 1;
+        luxFloat[1] = 40;
+        luxFloat[2] = 100;
+        luxFloat[3] = 325;
+        luxFloat[4] = 600;
+        luxFloat[5] = 1250;
+        luxFloat[6] = 2200;
+        luxFloat[7] = 4000;
+        luxFloat[8] = 10000;
+        screenBrightnessFloat[0] = 0;
+        screenBrightnessFloat[1] = 11;
+        screenBrightnessFloat[2] = 22;
+        screenBrightnessFloat[3] = 47;
+        screenBrightnessFloat[4] = 61;
+        screenBrightnessFloat[5] = 84;
+        screenBrightnessFloat[6] = 107;
+        screenBrightnessFloat[7] = 154;
+        screenBrightnessFloat[8] = 212;
+        /*for(int i = 0;i < luxInt.length;i++) {
+            luxFloat[i] = (float) luxInt[i];
+        }
+        for (int j = 0;j < screenBrightnessInt.length;j++) {
+            screenBrightnessFloat[j] = (float) screenBrightnessInt[j];
+        }*/
+
+        Log.d("Mainactivity", "createSpline前");
+        Log.d("Mainactivity", String.valueOf(luxFloat.length));
+        Log.d("Mainactivity", String.valueOf(screenBrightnessFloat.length));
+        Spline spline = Spline.createSpline(luxFloat, screenBrightnessFloat);
+        Log.d("Mainactivity", "createSpline后");
+        mScreenAutoBrightnessSpline = (Spline.MonotoneCubicSpline) spline;
+        Log.d("Mainactivity", "MonotoneCubicSpline");
+//        mScreenAutoBrightnessSpline = new Spline.MonotoneCubicSpline();
         // 申请android.permission.WRITE_SETTINGS权限的方式
         if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             // 如果当前平台版本大于23
@@ -112,18 +159,28 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                     super.handleMessage(msg);
                     switch (msg.what) {
                         case 1:
-                            StringBuffer sb = new StringBuffer();
+                            if(!isScreenAutoBrightness) {
+                                StringBuffer sb = new StringBuffer();
+                                float nowBrightnessValue = getBrightnessByAcitivity();
+                                sb.append("当前屏幕亮度：");
+                                if(nowBrightnessValue != -1) {
+                                    sb.append(String.valueOf(nowBrightnessValue * 255f));
+                                    screenBrightness.setText(sb.toString());
+                                }
+                            }
+                            /*StringBuffer sb = new StringBuffer();
                             float nowBrightnessValue = getBrightnessByAcitivity();
                             sb.append("当前屏幕亮度：");
                             if(nowBrightnessValue != -1) {
                                 sb.append(String.valueOf(nowBrightnessValue * 255f));
+                                screenBrightness.setText(sb.toString());
                             } else {
-                                float autoBrightnessValue = getAutoBrightnessValue(MainActivity.this);
+                                *//*float autoBrightnessValue = getAutoBrightnessValue(MainActivity.this);
                                 // 自动亮度调节计算公式
                                 float adj = (autoBrightnessValue + 1) * ((mMaximumBacklight - mMinimumBacklight) / 2f);
-                                sb.append(String.valueOf(adj));
-                            }
-                            screenBrightness.setText(sb.toString());
+                                sb.append(String.valueOf(adj));*//*
+                            }*/
+//                            screenBrightness.setText(sb.toString());
                             break;
                         default:
                     }
@@ -165,8 +222,10 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             @Override
             public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
                 if(isChecked) {
+                    isScreenAutoBrightness = true;
                     setScreenBrightnessByActivity(MainActivity.this,-1);
                 } else {
+                    isScreenAutoBrightness = false;
                     float l = getBrightnessByAcitivity();
                     if(l != -1) {
                         l *= 255f;
@@ -285,6 +344,14 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                 sb.append("光线强度：");
                 sb.append(String.valueOf(event.values[0]));
                 tvLight.setText(sb.toString());
+                sb.setLength(0);
+                if(isScreenAutoBrightness) {
+                    float sc = mScreenAutoBrightnessSpline.interpolate(event.values[0]);
+                    Log.d("Mainactivity", "interpolate后");
+                    sb.append("当前屏幕亮度：");
+                    sb.append(decimalFormat.format(sc));
+                    screenBrightness.setText(sb.toString());
+                }
                 break;
             }
             default:
