@@ -5,33 +5,32 @@ import android.content.ComponentName;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
-import android.database.ContentObserver;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.net.Uri;
 import android.os.Build;
+import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
 import android.os.PowerManager;
 import android.os.UserHandle;
 import android.provider.Settings;
+import android.support.annotation.RequiresApi;
 import android.support.v7.app.AppCompatActivity;
-import android.os.Bundle;
 import android.support.v7.widget.SwitchCompat;
 import android.util.Log;
-import android.util.Spline;
-import android.view.Display;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.CompoundButton;
 import android.widget.EditText;
-import android.widget.SeekBar;
-import android.widget.Switch;
 import android.widget.TextView;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
 import java.text.DecimalFormat;
 
 
@@ -39,26 +38,112 @@ import java.text.DecimalFormat;
  * @author ccg
  *
  */
+@RequiresApi(api = Build.VERSION_CODES.KITKAT)
 public class MainActivity extends AppCompatActivity implements SensorEventListener{
-
+    /**
+     * 接近传感值文本
+     */
     TextView tvProximity;
+    /**
+     * 光线强度文本
+     */
     TextView tvLight;
+    /**
+     * 当前屏幕亮度文本
+     */
     TextView screenBrightness;
+    /**
+     * 设置屏幕亮度编辑框
+     */
     EditText screenEdit;
+    /**
+     * 设置屏幕亮度按钮
+     */
     Button screenButton;
+    /**
+     * 自动亮度调节开关
+     */
     SwitchCompat switchBrightness;
+    /**
+     * 传感器
+     */
     SensorManager sensorManager;
-    private SeekBar seekBar;
-    private int maxEdit = 255;
-    private int minEdit = 0;
-    private int mMinimumBacklight;
-    private int mMaximumBacklight;
-    private ContentObserver mBrightnessObserver;
     Context mContext;
-    Spline.MonotoneCubicSpline mScreenAutoBrightnessSpline;
-    // 是否开启自动亮度调节
-    boolean isScreenAutoBrightness = true;
+    /**
+     * 监听回调值
+     */
+    private final int MSG_SYSTEM_SCREEN = 0;
+    private final int MSG_AUTO_SCREEN = 1;
+    private final int MSG_IS_AUTO = 2;
+    /**
+     * 屏幕亮度编辑框最大值
+     */
+    private int maxEdit = 255;
+    /**
+     * 屏幕亮度编辑框最小值
+     */
+    private int minEdit = 0;
+    /**
+     * 自动背光亮度值计算用
+     */
+    private int mMinimumBackLight;
+    private int mMaximumBackLight;
+    /**
+     * 系统屏幕亮度监听
+     */
+    private SystemScreenLightObserver systemScreenLightObserver;
+    /**
+     * 自动背光亮度监听
+     */
+    private AutoScreenLightObserver autoScreenLightObserver;
+    /**
+     * 是否开启自动亮度调节监听
+     */
+    private IsAutoObserver isAutoObserver;
     DecimalFormat decimalFormat=new DecimalFormat("0.0");
+
+    private Handler mHandler = new Handler() {
+        @Override
+        public void handleMessage(Message msg) {
+            super.handleMessage(msg);
+            switch (msg.what) {
+                case MSG_SYSTEM_SCREEN: {
+                    StringBuffer sb = new StringBuffer();
+                    float nowBrightnessValue = (Float) msg.obj;
+                    sb.append("当前屏幕亮度：");
+                    sb.append(decimalFormat.format(nowBrightnessValue));
+                    screenBrightness.setText(sb.toString());
+                    break;
+                }
+                case MSG_AUTO_SCREEN: {
+                    StringBuffer sb = new StringBuffer();
+                    float adj = (Float) msg.obj;
+                    sb.append("当前屏幕亮度：");
+                    // 从[-1, 1]转换为[0, 255]
+                    float nowBrightnessValue = (adj + 1) * ((mMaximumBackLight - mMinimumBackLight) / 2f);
+                    sb.append(decimalFormat.format(nowBrightnessValue));
+                    screenBrightness.setText(sb.toString());
+                    break;
+                }
+                case MSG_IS_AUTO : {
+                    boolean automicBrightness = (Boolean) msg.obj;
+                    StringBuffer sb = new StringBuffer();
+                    sb.append("当前屏幕亮度：");
+                    float nowBrightnessValue = 0;
+                    if(!automicBrightness) {
+                        nowBrightnessValue = getBrightnessValue(MainActivity.this);
+                    } else {
+                        nowBrightnessValue = getAutoBrightnessValue(MainActivity.this);
+                    }
+                    sb.append(decimalFormat.format(nowBrightnessValue));
+                    screenBrightness.setText(sb.toString());
+                    break;
+                }
+                default:
+                    break;
+            }
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -70,133 +155,148 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         screenEdit = (EditText) findViewById(R.id.screen_edit);
         screenButton = (Button) findViewById(R.id.screen_button);
         switchBrightness = (SwitchCompat) findViewById(R.id.switch_brightness);
-        seekBar = (SeekBar) findViewById(R.id.sb);
         sensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
-        final TextView test = (TextView) findViewById(R.id.test);
         mContext = this;
         PowerManager pm = (PowerManager)getSystemService(POWER_SERVICE);
         // 隐藏API
-        mMinimumBacklight = pm.getMinimumScreenBrightnessForVrSetting();
-        mMaximumBacklight = pm.getMaximumScreenBrightnessForVrSetting();
-
-        int[] luxInt = getResources().getIntArray(
-                com.android.internal.R.array.config_autoBrightnessLevels);
-        int[] screenBrightnessInt = getResources().getIntArray(
-                com.android.internal.R.array.config_autoBrightnessLcdBacklightValues);
-        float[] luxFloat = new float[9];
-        float[] screenBrightnessFloat = new float[9];
-        luxFloat[0] = 1;
-        luxFloat[1] = 40;
-        luxFloat[2] = 100;
-        luxFloat[3] = 325;
-        luxFloat[4] = 600;
-        luxFloat[5] = 1250;
-        luxFloat[6] = 2200;
-        luxFloat[7] = 4000;
-        luxFloat[8] = 10000;
-        screenBrightnessFloat[0] = 0;
-        screenBrightnessFloat[1] = 11;
-        screenBrightnessFloat[2] = 22;
-        screenBrightnessFloat[3] = 47;
-        screenBrightnessFloat[4] = 61;
-        screenBrightnessFloat[5] = 84;
-        screenBrightnessFloat[6] = 107;
-        screenBrightnessFloat[7] = 154;
-        screenBrightnessFloat[8] = 212;
-        /*for(int i = 0;i < luxInt.length;i++) {
-            luxFloat[i] = (float) luxInt[i];
-        }
-        for (int j = 0;j < screenBrightnessInt.length;j++) {
-            screenBrightnessFloat[j] = (float) screenBrightnessInt[j];
-        }*/
-
-        Log.d("Mainactivity", "createSpline前");
-        Log.d("Mainactivity", String.valueOf(luxFloat.length));
-        Log.d("Mainactivity", String.valueOf(screenBrightnessFloat.length));
-        Spline spline = Spline.createSpline(luxFloat, screenBrightnessFloat);
-        Log.d("Mainactivity", "createSpline后");
-        mScreenAutoBrightnessSpline = (Spline.MonotoneCubicSpline) spline;
-        Log.d("Mainactivity", "MonotoneCubicSpline");
-//        mScreenAutoBrightnessSpline = new Spline.MonotoneCubicSpline();
-        // 申请android.permission.WRITE_SETTINGS权限的方式
-        if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            // 如果当前平台版本大于23
-            if(!Settings.System.canWrite(this)) {
-                // 如果没有修改系统的权限这请求修改系统的权限
-                Intent intent = new Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS);
-                intent.setData(Uri.parse("package:" + getPackageName()));
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                startActivityForResult(intent, 0);
-            } else {
-
-            }
-        }
-
+        mMinimumBackLight = pm.getMinimumScreenBrightnessForVrSetting();
+        mMaximumBackLight = pm.getMaximumScreenBrightnessForVrSetting();
         // 开关按钮注册
         switchBrightnessShow();
         // 设置屏幕亮度按钮注册
         screenButtonShow();
-        // 下拉条注册
-        processShow();
-        new Thread(new Runnable() {
 
-            @Override
-            public void run() {
-                while (true) {
-                    try {
-                        Message msg = new Message();
-                        msg.what = 1;
-                        handler.sendMessage(msg);
-                        Thread.sleep(1000);
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
-                    }
-                }
+        StringBuffer sb = new StringBuffer();
+        sb.append("当前屏幕亮度：");
+        float nowBrightnessValue = 0;
+        // 判断系统是否开启自动背光
+        boolean isAutoBrightness = isAutoBrightness(MainActivity.this);
+        if(isAutoBrightness) {
+            switchBrightness.setChecked(true);
+            nowBrightnessValue = getAutoBrightnessValue(MainActivity.this);
+        } else {
+            switchBrightness.setChecked(false);
+            nowBrightnessValue = getBrightnessValue(MainActivity.this);
+        }
+        sb.append(decimalFormat.format(nowBrightnessValue));
+        screenBrightness.setText(sb.toString());
+        // 实例化监听
+        instanceObserver();
+
+        String cmd = "dumpsys display";
+        BufferedReader reader = null;
+        String content = "";
+        try {
+            Log.d("ccg", "process start");
+            Process process = Runtime.getRuntime().exec(cmd);
+            reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+            StringBuffer output = new StringBuffer();
+            int read;
+            char[] buffer = new char[1024];
+            while ((read = reader.read(buffer)) > 0) {
+                output.append(buffer, 0, read);
             }
-            private Handler handler = new Handler() {
-                @Override
-                public void handleMessage(Message msg) {
-                    super.handleMessage(msg);
-                    switch (msg.what) {
-                        case 1:
-                            if(!isScreenAutoBrightness) {
-                                StringBuffer sb = new StringBuffer();
-                                float nowBrightnessValue = getBrightnessByAcitivity();
-                                sb.append("当前屏幕亮度：");
-                                if(nowBrightnessValue != -1) {
-                                    sb.append(String.valueOf(nowBrightnessValue * 255f));
-                                    screenBrightness.setText(sb.toString());
-                                }
-                            }
-                            /*StringBuffer sb = new StringBuffer();
-                            float nowBrightnessValue = getBrightnessByAcitivity();
-                            sb.append("当前屏幕亮度：");
-                            if(nowBrightnessValue != -1) {
-                                sb.append(String.valueOf(nowBrightnessValue * 255f));
-                                screenBrightness.setText(sb.toString());
-                            } else {
-                                *//*float autoBrightnessValue = getAutoBrightnessValue(MainActivity.this);
-                                // 自动亮度调节计算公式
-                                float adj = (autoBrightnessValue + 1) * ((mMaximumBacklight - mMinimumBacklight) / 2f);
-                                sb.append(String.valueOf(adj));*//*
-                            }*/
-//                            screenBrightness.setText(sb.toString());
-                            break;
-                        default:
-                    }
-                }
-            };
-        }).start();
-        mBrightnessObserver = new ContentObserver(new Handler()) {
-            @Override
-            public void onChange(boolean selfChange, Uri uri) {
-                float auto = getAutoBrightnessValue(MainActivity.this);
-                float adj = (auto + 1) * ((mMaximumBacklight - mMinimumBacklight) / 2f);
-                test.setText(String.valueOf(adj));
-            }
-        };
+            reader.close();
+            content = output.toString();
+            String[] s1 = content.split("mScreenAutoBrightness=");
+            String[] s2 = s1[1].split("mScreenAutoBrightnessAdjustment=");
+            String backLight = s2[0];
+            Log.d("ccg", backLight);
+            Log.d("ccg", "process end");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
+    /**
+     * 实例化监听器
+     */
+    private void instanceObserver() {
+        systemScreenLightObserver = new SystemScreenLightObserver(mContext, mHandler);
+        autoScreenLightObserver = new AutoScreenLightObserver(mContext, mHandler);
+        isAutoObserver = new IsAutoObserver(mContext, mHandler);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // 注册传感器
+        registerSensor();
+        // 注册监听
+        registerObserver();
+
+    }
+
+    /**
+     * 注册监听
+     */
+    private void registerObserver() {
+        // 监听Uri
+        Uri uriSystemScreenLight = Settings.System.getUriFor(
+                Settings.System.SCREEN_BRIGHTNESS
+        );
+        Uri uriAutoScreenLight = Settings.System.getUriFor(
+                "screen_auto_brightness_adj"
+        );
+        Uri uriIsAuto = Settings.System.getUriFor(
+                Settings.System.SCREEN_BRIGHTNESS_MODE
+        );
+        // 注册监听
+        getContentResolver().registerContentObserver(
+                uriSystemScreenLight,
+                false,
+                systemScreenLightObserver
+        );
+        getContentResolver().registerContentObserver(
+                uriAutoScreenLight,
+                false,
+                autoScreenLightObserver
+        );
+        getContentResolver().registerContentObserver(
+                uriIsAuto,
+                false,
+                isAutoObserver
+        );
+    }
+
+    /**
+     * 注册传感器
+     */
+    private void registerSensor() {
+        // 获取传感器
+        Sensor sensorProximity = sensorManager.getDefaultSensor(Sensor.TYPE_PROXIMITY);
+        Sensor sensorLight = sensorManager.getDefaultSensor(Sensor.TYPE_LIGHT);
+        // 注册传感器
+        sensorManager.registerListener(
+                this,
+                sensorProximity,
+                SensorManager.SENSOR_DELAY_UI
+        );
+        sensorManager.registerListener(
+                this,
+                sensorLight,
+                SensorManager.SENSOR_DELAY_UI
+        );
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        sensorManager.unregisterListener(this);
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        // 取消注册
+        getContentResolver().unregisterContentObserver(systemScreenLightObserver);
+        getContentResolver().unregisterContentObserver(autoScreenLightObserver);
+        getContentResolver().unregisterContentObserver(isAutoObserver);
+    }
+
+    /**
+     * 设置屏幕亮度按钮
+     */
     private void screenButtonShow() {
         screenButton.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -210,44 +310,47 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                         screenEdit.setError("不能小于0");
                         return;
                     }
-                    setScreenBrightnessByActivity(MainActivity.this, value);
-                    switchBrightness.setChecked(false);
-                }
-            }
-        });
-    }
-
-    private void switchBrightnessShow() {
-        switchBrightness.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-            @Override
-            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                if(isChecked) {
-                    isScreenAutoBrightness = true;
-                    setScreenBrightnessByActivity(MainActivity.this,-1);
-                } else {
-                    isScreenAutoBrightness = false;
-                    float l = getBrightnessByAcitivity();
-                    if(l != -1) {
-                        l *= 255f;
-                        setScreenBrightnessByActivity(MainActivity.this, (int) l);
+                    boolean isAutoBrightness = isAutoBrightness(MainActivity.this);
+                    if(!isAutoBrightness) {
+                        setScreenBrightness(MainActivity.this, value);
                     } else {
-                        setScreenBrightnessByActivity(MainActivity.this, 255);
+                        setAutoScreenBrightness(MainActivity.this, value);
                     }
+
                 }
             }
         });
     }
 
     /**
-     * 获取当前屏幕亮度
+     * 设置是否自动亮度调节开关
+     */
+    private void switchBrightnessShow() {
+        switchBrightness.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                if(isChecked) {
+                    startAutoBrightness(MainActivity.this);
+//                    setScreenBrightnessByActivity(MainActivity.this,-1);
+                } else {
+                    stopAutoBrightness(MainActivity.this);
+//                    float l = getBrightnessByAcitivity();
+                    /*float l = getBrightnessValue(MainActivity.this);
+                    setScreenBrightness(MainActivity.this, (int) l);*/
+                }
+            }
+        });
+    }
+
+    /**
+     * 获取当前系统屏幕亮度
      * @return
      */
-    @Deprecated
-    private int getBrightnessValue(Activity activity) {
-        int nowBrightnessValue = 0;
+    private float getBrightnessValue(Activity activity) {
+        float nowBrightnessValue = 0;
         ContentResolver resolver = activity.getContentResolver();
         try {
-            nowBrightnessValue = Settings.System.getInt(
+            nowBrightnessValue = Settings.System.getFloat(
                     resolver,
                     Settings.System.SCREEN_BRIGHTNESS
                     );
@@ -275,13 +378,15 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         } catch (Exception e) {
             e.printStackTrace();
         }
-        return nowBrightnessValue;
+        float adj = (nowBrightnessValue + 1) * ((mMaximumBackLight - mMinimumBackLight) / 2f);
+        return adj;
     }
 
     /**
      * 获取当前activity亮度
      * @return
      */
+    @Deprecated
     private float getBrightnessByAcitivity() {
         return getWindow().getAttributes().screenBrightness;
     }
@@ -291,6 +396,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
      * @param activity
      * @param value
      */
+    @Deprecated
     private void setScreenBrightnessByActivity(Activity activity, int value) {
         WindowManager.LayoutParams params = activity.getWindow().getAttributes();
         if(value != -1) {
@@ -299,31 +405,81 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             params.screenBrightness = value;
         }
         activity.getWindow().setAttributes(params);
-        seekBar.setProgress(value);
     }
 
+    /**
+     * 设置系统屏幕亮度
+     * @param activity
+     * @param value
+     */
+    private void setScreenBrightness(Activity activity, int value) {
+        Settings.System.putInt(activity.getContentResolver(),
+                Settings.System.SCREEN_BRIGHTNESS,
+                value
+                );
+        Uri uri = Settings.System.getUriFor(
+                Settings.System.SCREEN_BRIGHTNESS
+        );
+        activity.getApplicationContext().getContentResolver().notifyChange(uri, systemScreenLightObserver);
+    }
 
-    private void processShow() {
-        seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override
-            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                if(!fromUser) {
-                } else {
-                    setScreenBrightnessByActivity(MainActivity.this, seekBar.getProgress());
-                    switchBrightness.setChecked(false);
-                }
-            }
+    /**
+     * 设置自动亮度调节值
+     * @param activity
+     * @param value
+     */
+    private void setAutoScreenBrightness(Activity activity, int value) {
+        float adj = value / ((mMaximumBackLight - mMinimumBackLight) / 2f) - 1;
+        Settings.System.putFloat(activity.getContentResolver(),
+                "screen_auto_brightness_adj",
+                adj
+                );
+        Uri uri = Settings.System.getUriFor(
+                "screen_auto_brightness_adj"
+        );
+        activity.getApplicationContext().getContentResolver().notifyChange(uri, autoScreenLightObserver);
+    }
+    /**
+     * 判断是否开启自动亮度调节
+     * @param activity
+     * @return
+     */
+    public static boolean isAutoBrightness(Activity activity) {
 
-            @Override
-            public void onStartTrackingTouch(SeekBar seekBar) {
+        boolean automicBrightness = false;
+        ContentResolver resolver = activity.getContentResolver();
+        try {
+            automicBrightness = Settings.System.getInt(resolver,
+                    Settings.System.SCREEN_BRIGHTNESS_MODE)
+                    == Settings.System.SCREEN_BRIGHTNESS_MODE_AUTOMATIC;
+        } catch (Settings.SettingNotFoundException e) {
+            e.printStackTrace();
+        }
+        return automicBrightness;
 
-            }
+    }
 
-            @Override
-            public void onStopTrackingTouch(SeekBar seekBar) {
+    /**
+     * 开启自动亮度调节
+     * @param activity
+     */
+    public static void startAutoBrightness(Activity activity) {
 
-            }
-        });
+        Settings.System.putInt(activity.getContentResolver(),
+                Settings.System.SCREEN_BRIGHTNESS_MODE,
+                Settings.System.SCREEN_BRIGHTNESS_MODE_AUTOMATIC);
+    }
+
+    /**
+     * 关闭自动亮度调节
+     * @param activity
+     */
+    public static void stopAutoBrightness(Activity activity) {
+
+        Settings.System.putInt(activity.getContentResolver(),
+                Settings.System.SCREEN_BRIGHTNESS_MODE,
+                Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL);
+
     }
     /**
      * 传感器数据变化时回调
@@ -345,13 +501,13 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                 sb.append(String.valueOf(event.values[0]));
                 tvLight.setText(sb.toString());
                 sb.setLength(0);
-                if(isScreenAutoBrightness) {
+                /*if(isScreenAutoBrightness) {
                     float sc = mScreenAutoBrightnessSpline.interpolate(event.values[0]);
                     Log.d("Mainactivity", "interpolate后");
                     sb.append("当前屏幕亮度：");
                     sb.append(decimalFormat.format(sc));
                     screenBrightness.setText(sb.toString());
-                }
+                }*/
                 break;
             }
             default:
@@ -368,33 +524,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
     }
 
-    @Override
-    protected void onResume() {
-        super.onResume();
-        Sensor sensorProximity = sensorManager.getDefaultSensor(Sensor.TYPE_PROXIMITY);
-        Sensor sensorLight = sensorManager.getDefaultSensor(Sensor.TYPE_LIGHT);
-        // 注册传感器
-        sensorManager.registerListener(
-                this,
-                sensorProximity,
-                SensorManager.SENSOR_DELAY_UI
-                );
-        sensorManager.registerListener(
-                this,
-                sensorLight,
-                SensorManager.SENSOR_DELAY_UI
-        );
-        mContext.getContentResolver().registerContentObserver(
-                Settings.System.getUriFor("screen_auto_brightness_adj"), true,
-                mBrightnessObserver);
-    }
 
-    @Override
-    protected void onPause() {
-        super.onPause();
-        sensorManager.unregisterListener(this);
-        mContext.getContentResolver().unregisterContentObserver(mBrightnessObserver);
-    }
 
     @Override
     public synchronized ComponentName startForegroundServiceAsUser(Intent service, UserHandle user) {

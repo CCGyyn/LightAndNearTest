@@ -82,21 +82,6 @@
 
         </LinearLayout>
 
-        <SeekBar
-            android:id="@+id/sb"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:max="255"
-            android:min="0"
-            android:progress="255"
-            android:layout_weight="1"
-            />
-        <TextView
-            android:id="@+id/test"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="test"
-            />
 
     </LinearLayout>
 
