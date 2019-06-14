@@ -10,6 +10,7 @@ import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.net.Uri;
+import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -75,6 +76,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     private final int MSG_SYSTEM_SCREEN = 0;
     private final int MSG_AUTO_SCREEN = 1;
     private final int MSG_IS_AUTO = 2;
+    private final int MSG_AUTO_DUMPSYS = 3;
     /**
      * 屏幕亮度编辑框最大值
      */
@@ -100,12 +102,12 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
      * 是否开启自动亮度调节监听
      */
     private IsAutoObserver isAutoObserver;
-    DecimalFormat decimalFormat=new DecimalFormat("0.0");
+    DecimalFormat decimalFormat=new DecimalFormat("0");
+    private String TAG = getClass().getSimpleName();
 
-    private Handler mHandler = new Handler() {
+    private Handler mHandler = new Handler(new Handler.Callback() {
         @Override
-        public void handleMessage(Message msg) {
-            super.handleMessage(msg);
+        public boolean handleMessage(Message msg) {
             switch (msg.what) {
                 case MSG_SYSTEM_SCREEN: {
                     StringBuffer sb = new StringBuffer();
@@ -139,11 +141,22 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                     screenBrightness.setText(sb.toString());
                     break;
                 }
+                case MSG_AUTO_DUMPSYS: {
+                    String backLight = (String) msg.obj;
+                    StringBuffer sb = new StringBuffer();
+                    sb.append("当前屏幕亮度：");
+                    Log.d(TAG, "MSG_AUTO_DUMPSYS");
+                    sb.append(backLight);
+                    screenBrightness.setText(sb.toString());
+                    Log.d(TAG, "finish");
+                    break;
+                }
                 default:
                     break;
             }
+            return false;
         }
-    };
+    });
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -182,12 +195,35 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         screenBrightness.setText(sb.toString());
         // 实例化监听
         instanceObserver();
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                while (true) {
+                    boolean isAutoBrightness = isAutoBrightness(MainActivity.this);
+                    if(isAutoBrightness) {
+                        Log.d(TAG, "子线程adb命令--------");
+                        String backLight = getAutoBackLightByDumpsys();
+                        Log.d(TAG, backLight);
+                        if(!backLight.isEmpty()) {
+                            mHandler.obtainMessage(MSG_AUTO_DUMPSYS, backLight).sendToTarget();
+                        }
+                    }
+                    try {
+                        Thread.sleep(1000);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }
+        }).start();
+    }
 
+    private String getAutoBackLightByDumpsys() {
         String cmd = "dumpsys display";
         BufferedReader reader = null;
         String content = "";
+        String backLight = "";
         try {
-            Log.d("ccg", "process start");
             Process process = Runtime.getRuntime().exec(cmd);
             reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
             StringBuffer output = new StringBuffer();
@@ -200,12 +236,12 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             content = output.toString();
             String[] s1 = content.split("mScreenAutoBrightness=");
             String[] s2 = s1[1].split("mScreenAutoBrightnessAdjustment=");
-            String backLight = s2[0];
-            Log.d("ccg", backLight);
-            Log.d("ccg", "process end");
+            backLight = s2[0];
+            return backLight.trim();
         } catch (IOException e) {
             e.printStackTrace();
         }
+        return backLight;
     }
 
     /**
