@@ -26,16 +26,28 @@
             android:id="@+id/tv_light"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="光线强度："
+            android:text="光强值："
             android:textSize="25dp"
             />
-        <TextView
-            android:id="@+id/screen_brightness"
-            android:layout_width="wrap_content"
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="当前屏幕亮度："
-            android:textSize="25dp"
-            />
+            android:orientation="horizontal"
+            >
+            <TextView
+                android:id="@+id/screen_brightness"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="当前屏幕亮度："
+                android:textSize="25dp"
+                />
+            <TextView
+                android:id="@+id/back_light"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textSize="25dp"
+                />
+        </LinearLayout>
         <EditText
             android:id="@+id/screen_edit"
             android:layout_width="wrap_content"
@@ -81,7 +93,68 @@
             </android.support.constraint.ConstraintLayout>
 
         </LinearLayout>
-
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            >
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="开始测试时间："
+                android:textSize="25dp"
+                />
+            <TextView
+                android:id="@+id/start_time"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textSize="25dp"
+                />
+        </LinearLayout>
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            >
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="开始变化时间："
+                android:textSize="25dp"
+                />
+            <TextView
+                android:id="@+id/change_start_time"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textSize="25dp"
+                />
+        </LinearLayout>
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            >
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="结束变化时间："
+                android:textSize="25dp"
+                />
+            <TextView
+                android:id="@+id/change_end_time"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textSize="25dp"
+                />
+        </LinearLayout>
+        <Button
+            android:id="@+id/test_bt"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Start"
+            android:textAllCaps="false"
+            android:layout_gravity="center"
+            />
 
     </LinearLayout>
 

@@ -10,7 +10,6 @@ import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.net.Uri;
-import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -33,6 +32,9 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.text.DecimalFormat;
+import java.text.SimpleDateFormat;
+import java.util.Timer;
+import java.util.TimerTask;
 
 
 /**
@@ -44,35 +46,61 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     /**
      * 接近传感值文本
      */
-    TextView tvProximity;
+    private TextView tvProximity;
     /**
      * 光线强度文本
      */
-    TextView tvLight;
+    private TextView tvLight;
     /**
-     * 当前屏幕亮度文本
+     * 当前屏幕亮度值
      */
-    TextView screenBrightness;
+    private TextView backLightText;
     /**
      * 设置屏幕亮度编辑框
      */
-    EditText screenEdit;
+    private EditText screenEdit;
     /**
      * 设置屏幕亮度按钮
      */
-    Button screenButton;
+    private Button screenButton;
     /**
      * 自动亮度调节开关
      */
-    SwitchCompat switchBrightness;
+    private SwitchCompat switchBrightness;
+    /**
+     * 测试时间文本
+     */
+    private TextView startTimeText;
+    private TextView startChangeTimeText;
+    private TextView stopChangeTimeText;
+    private String startTime;
+    private String startChangeTime;
+    private String stopChangeTime;
+    private String brightnessValue;
+    private Timer timer;
+    private int ii = 0;
+    /**
+     * 测试按钮
+     */
+    private Button excuteBt;
+    /**
+     * 是否正在进行测试
+     */
+    private boolean testFlag = false;
+    /**
+     * 开始变化标志
+     */
+    private boolean startChangeFlag = false;
+    private Thread setBackLightThread;
     /**
      * 传感器
      */
-    SensorManager sensorManager;
-    Context mContext;
+    private SensorManager sensorManager;
+    private Context mContext;
     /**
      * 监听回调值
      */
+    private final int MSG_TEST = -1;
     private final int MSG_SYSTEM_SCREEN = 0;
     private final int MSG_AUTO_SCREEN = 1;
     private final int MSG_IS_AUTO = 2;
@@ -102,52 +130,61 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
      * 是否开启自动亮度调节监听
      */
     private IsAutoObserver isAutoObserver;
-    DecimalFormat decimalFormat=new DecimalFormat("0");
+    private DecimalFormat decimalFormat;
+    private SimpleDateFormat dateFormat;
     private String TAG = getClass().getSimpleName();
 
     private Handler mHandler = new Handler(new Handler.Callback() {
         @Override
         public boolean handleMessage(Message msg) {
+            if(testFlag) {
+                if(ii < 50) {
+                    String str = getAutoBackLightByDumpsys();
+                    backLightText.setText(str);
+                    if(!brightnessValue.equals(str)) {
+                        stopChangeTime = dateFormat.format(System.currentTimeMillis());
+                        if(!startChangeFlag) {
+                            startChangeFlag = true;
+                            startChangeTime = dateFormat.format(System.currentTimeMillis());
+                            startTimeText.setText(startChangeTime);
+                        }
+                        ii = 0;
+                        brightnessValue = str;
+                    }
+                    return false;
+                }
+                clearAll();
+                stopChangeTimeText.setText(stopChangeTime);
+                return false;
+            }
             switch (msg.what) {
                 case MSG_SYSTEM_SCREEN: {
-                    StringBuffer sb = new StringBuffer();
                     float nowBrightnessValue = (Float) msg.obj;
-                    sb.append("当前屏幕亮度：");
-                    sb.append(decimalFormat.format(nowBrightnessValue));
-                    screenBrightness.setText(sb.toString());
+                    backLightText.setText(decimalFormat.format(nowBrightnessValue));
                     break;
                 }
                 case MSG_AUTO_SCREEN: {
-                    StringBuffer sb = new StringBuffer();
                     float adj = (Float) msg.obj;
-                    sb.append("当前屏幕亮度：");
                     // 从[-1, 1]转换为[0, 255]
                     float nowBrightnessValue = (adj + 1) * ((mMaximumBackLight - mMinimumBackLight) / 2f);
-                    sb.append(decimalFormat.format(nowBrightnessValue));
-                    screenBrightness.setText(sb.toString());
+                    backLightText.setText(decimalFormat.format(nowBrightnessValue));
                     break;
                 }
                 case MSG_IS_AUTO : {
                     boolean automicBrightness = (Boolean) msg.obj;
-                    StringBuffer sb = new StringBuffer();
-                    sb.append("当前屏幕亮度：");
                     float nowBrightnessValue = 0;
                     if(!automicBrightness) {
                         nowBrightnessValue = getBrightnessValue(MainActivity.this);
                     } else {
                         nowBrightnessValue = getAutoBrightnessValue(MainActivity.this);
                     }
-                    sb.append(decimalFormat.format(nowBrightnessValue));
-                    screenBrightness.setText(sb.toString());
+                    backLightText.setText(decimalFormat.format(nowBrightnessValue));
                     break;
                 }
                 case MSG_AUTO_DUMPSYS: {
                     String backLight = (String) msg.obj;
-                    StringBuffer sb = new StringBuffer();
-                    sb.append("当前屏幕亮度：");
                     Log.d(TAG, "MSG_AUTO_DUMPSYS");
-                    sb.append(backLight);
-                    screenBrightness.setText(sb.toString());
+                    backLightText.setText(backLight);
                     Log.d(TAG, "finish");
                     break;
                 }
@@ -164,12 +201,18 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         setContentView(R.layout.activity_main);
         tvProximity = (TextView) findViewById(R.id.tv_proximity);
         tvLight = (TextView) findViewById(R.id.tv_light);
-        screenBrightness = (TextView) findViewById(R.id.screen_brightness);
+        backLightText = (TextView) findViewById(R.id.back_light);
         screenEdit = (EditText) findViewById(R.id.screen_edit);
         screenButton = (Button) findViewById(R.id.screen_button);
         switchBrightness = (SwitchCompat) findViewById(R.id.switch_brightness);
+        excuteBt = (Button) findViewById(R.id.test_bt);
+        startTimeText = (TextView) findViewById(R.id.start_time);
+        startChangeTimeText = (TextView) findViewById(R.id.change_start_time);
+        stopChangeTimeText = (TextView) findViewById(R.id.change_end_time);
         sensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
         mContext = this;
+        decimalFormat = new DecimalFormat("0");
+        dateFormat = new SimpleDateFormat("HH:mm:ss.SSS");
         PowerManager pm = (PowerManager)getSystemService(POWER_SERVICE);
         // 隐藏API
         mMinimumBackLight = pm.getMinimumScreenBrightnessForVrSetting();
@@ -178,9 +221,36 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         switchBrightnessShow();
         // 设置屏幕亮度按钮注册
         screenButtonShow();
+        // 测试按钮注册
+        excuteBt.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                startTimeText.setText("");
+                startChangeTimeText.setText("");
+                stopChangeTimeText.setText("");
+                excuteBt.setText("Testing");
+                excuteBt.setEnabled(false);
+                testFlag = true;
+                try {
+                    setBackLightThread.wait();
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+                // 这里也许有错
+                Log.d(TAG, "brightnessValue = " + brightnessValue);
+                brightnessValue = backLightText.getText().toString();
+                timer = new Timer();
+                timer.schedule(new TimerTask() {
+                    @Override
+                    public void run() {
+                        mHandler.sendEmptyMessage(MSG_TEST);
+                    }
+                }, 10L, 200L);
+                startTime = dateFormat.format(System.currentTimeMillis());
+                startTimeText.setText(startTime);
+            }
+        });
 
-        StringBuffer sb = new StringBuffer();
-        sb.append("当前屏幕亮度：");
         float nowBrightnessValue = 0;
         // 判断系统是否开启自动背光
         boolean isAutoBrightness = isAutoBrightness(MainActivity.this);
@@ -191,11 +261,10 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             switchBrightness.setChecked(false);
             nowBrightnessValue = getBrightnessValue(MainActivity.this);
         }
-        sb.append(decimalFormat.format(nowBrightnessValue));
-        screenBrightness.setText(sb.toString());
+        backLightText.setText(decimalFormat.format(nowBrightnessValue));
         // 实例化监听
         instanceObserver();
-        new Thread(new Runnable() {
+        setBackLightThread = new Thread(new Runnable() {
             @Override
             public void run() {
                 while (true) {
@@ -209,15 +278,36 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                         }
                     }
                     try {
-                        Thread.sleep(1000);
+                        Thread.sleep(500);
                     } catch (InterruptedException e) {
                         e.printStackTrace();
                     }
                 }
             }
-        }).start();
+        });
+        setBackLightThread.start();
     }
 
+    /**
+     * 测试结束
+     */
+    private void clearAll() {
+        excuteBt.setText("Start");
+        excuteBt.setEnabled(true);
+        if(timer != null) {
+            timer.cancel();
+            timer = null;
+        }
+        ii = 0;
+        testFlag = false;
+        setBackLightThread.notify();
+        startChangeFlag = false;
+    }
+
+    /**
+     * 获取自动背光值
+     * @return
+     */
     private String getAutoBackLightByDumpsys() {
         String cmd = "dumpsys display";
         BufferedReader reader = null;
@@ -235,7 +325,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             reader.close();
             content = output.toString();
             String[] s1 = content.split("mScreenAutoBrightness=");
-            String[] s2 = s1[1].split("mScreenAutoBrightnessAdjustment=");
+            String[] s2 = s1[1].split(" ");
             backLight = s2[0];
             return backLight.trim();
         } catch (IOException e) {
@@ -537,13 +627,6 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                 sb.append(String.valueOf(event.values[0]));
                 tvLight.setText(sb.toString());
                 sb.setLength(0);
-                /*if(isScreenAutoBrightness) {
-                    float sc = mScreenAutoBrightnessSpline.interpolate(event.values[0]);
-                    Log.d("Mainactivity", "interpolate后");
-                    sb.append("当前屏幕亮度：");
-                    sb.append(decimalFormat.format(sc));
-                    screenBrightness.setText(sb.toString());
-                }*/
                 break;
             }
             default:
