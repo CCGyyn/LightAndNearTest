@@ -7,7 +7,7 @@
     tools:context=".MainActivity">
 
     <LinearLayout
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
         app:layout_constraintBottom_toBottomOf="parent"
@@ -19,14 +19,14 @@
             android:id="@+id/tv_proximity"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="接近传感值："
+            android:text="    接近传感值："
             android:textSize="25dp"
             />
         <TextView
             android:id="@+id/tv_light"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="光强值："
+            android:text="             光强值："
             android:textSize="25dp"
             />
         <LinearLayout
@@ -55,12 +55,14 @@
             android:maxLength="3"
             android:digits="1234567890"
             android:hint="0-255"
+            android:layout_gravity="center"
             />
         <Button
             android:id="@+id/screen_button"
-            android:layout_width="match_parent"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="设置屏幕亮度"
+            android:layout_gravity="center"
             />
         <LinearLayout
             android:layout_width="wrap_content"

@@ -138,18 +138,22 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         @Override
         public boolean handleMessage(Message msg) {
             if(testFlag) {
+                ii ++;
                 if(ii < 50) {
                     String str = getAutoBackLightByDumpsys();
                     backLightText.setText(str);
                     if(!brightnessValue.equals(str)) {
-                        stopChangeTime = dateFormat.format(System.currentTimeMillis());
                         if(!startChangeFlag) {
                             startChangeFlag = true;
-                            startChangeTime = dateFormat.format(System.currentTimeMillis());
-                            startTimeText.setText(startChangeTime);
+                            startChangeTimeText.setText(startChangeTime);
                         }
+                        stopChangeTime = dateFormat.format(System.currentTimeMillis());
                         ii = 0;
                         brightnessValue = str;
+                    } else {
+                        if(!startChangeFlag) {
+                            startChangeTime = dateFormat.format(System.currentTimeMillis());
+                        }
                     }
                     return false;
                 }
@@ -228,16 +232,11 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                 startTimeText.setText("");
                 startChangeTimeText.setText("");
                 stopChangeTimeText.setText("");
+                startChangeTime = "";
+                stopChangeTime = "";
                 excuteBt.setText("Testing");
                 excuteBt.setEnabled(false);
                 testFlag = true;
-                try {
-                    setBackLightThread.wait();
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-                // 这里也许有错
-                Log.d(TAG, "brightnessValue = " + brightnessValue);
                 brightnessValue = backLightText.getText().toString();
                 timer = new Timer();
                 timer.schedule(new TimerTask() {
@@ -247,7 +246,9 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                     }
                 }, 10L, 200L);
                 startTime = dateFormat.format(System.currentTimeMillis());
+                Log.d("error", startTime);
                 startTimeText.setText(startTime);
+                startChangeTime = dateFormat.format(System.currentTimeMillis());
             }
         });
 
@@ -300,7 +301,6 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         }
         ii = 0;
         testFlag = false;
-        setBackLightThread.notify();
         startChangeFlag = false;
     }
 
@@ -616,14 +616,14 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         switch (event.sensor.getType()) {
             case Sensor.TYPE_PROXIMITY:{
                 StringBuffer sb = new StringBuffer();
-                sb.append("接近传感值：");
+                sb.append("    接近传感值：");
                 sb.append(String.valueOf(event.values[0]));
                 tvProximity.setText(sb.toString());
                 break;
             }
             case Sensor.TYPE_LIGHT:{
                 StringBuffer sb = new StringBuffer();
-                sb.append("光线强度：");
+                sb.append("             光强值：");
                 sb.append(String.valueOf(event.values[0]));
                 tvLight.setText(sb.toString());
                 sb.setLength(0);
